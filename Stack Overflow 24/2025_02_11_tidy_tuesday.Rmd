@@ -1,0 +1,136 @@
+---
+title: "Stack Overflow 2024 Survey Analysis"
+date: 2025-02-13
+output: html_document
+---
+
+# TidyTuesday
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidytuesdayR)
+```
+
+# Load the weekly Data
+
+Download the weekly data and make available in the `tt` object.
+
+```{r Load}
+tt <- tt_load(2024, week = 36)
+responses <- tt$stackoverflow_survey_single_response
+qname_levels_single_response_crosswalk <- tt$qname_levels_single_response_crosswalk
+stackoverflow_survey_questions <- tt$stackoverflow_survey_questions
+```
+
+
+# Readme
+
+Take a look at the readme for the weekly data to get insight on the dataset.
+This includes a data dictionary, source, and a link to an article on the data.
+
+```{r Readme, eval = interactive()}
+tt
+```
+
+
+# Glimpse Data
+
+Take an initial look at the format of the data available.
+
+```{r Glimpse}
+responses %>% 
+  # head()
+```
+
+# Wrangle
+
+Explore the data and process it into a nice format for plotting! Access each dataset by name by using a dollarsign after the `tt` object and then the name of the data set.
+
+```{r Wrangle}
+#How many non null values are in converted_comp_yearly column
+#drop obs with missing values i converted_comp_yearly
+responses_w_salaries <- responses %>% 
+  filter(!is.na(converted_comp_yearly))
+
+# 4, 6, 14, 16, 18, 24, 34
+# Comparing salaries of these values in the dev_type column
+responses_w_salaries %>% 
+  group_by(dev_type) %>%
+  filter(dev_type %in% c(4, 6, 14, 16, 18, 24, 34)) %>%
+  summarize(mean_salary = mean(converted_comp_yearly)) %>% 
+  ggplot(aes(x = factor(dev_type), y = mean_salary)) + geom_col() +
+  scale_x_discrete()
+
+responses_w_salaries %>% 
+  group_by(dev_type) %>%
+  filter(dev_type %in% c(4, 6, 14, 16, 18, 24, 34)) %>%
+  select(converted_comp_yearly) %>% 
+  ggplot(aes(x = factor(dev_type), y = converted_comp_yearly)) + geom_boxplot() +
+  scale_y_log10()
+```
+
+```{r}
+# Hypotheses to test:
+# Salary is dependent on the Users Age (Anova)
+# Compensation is the same for every category of users who use ai in their work. (Anova)
+# The proportion of AI users is greater than 50%.
+```
+
+```{r}
+# Checking the counts of obs that had missing values for the converted_comp
+# and how that relates to years_code_pro
+responses %>% 
+  group_by(years_code_pro) %>% 
+  summarize(missing_values = sum(is.na(converted_comp_yearly))) %>% 
+  ggplot(aes(x = years_code_pro, y = missing_values)) + geom_col()
+```
+```{r}
+# Hypothesising that the proportion of devs of interest who use AI in their work
+# is greater than 50%
+# filter(dev_type %in% c(4, 6, 14, 16, 18, 24, 34))
+responses_dev_grp <- responses %>% 
+  group_by(factor(dev_type)) %>%
+  #create ai_binary column where if value of ai_select column is 3 is yes, else no
+  mutate(ai_binary = ifelse(ai_select == 3, 1, 0)) %>% 
+  #convert ai_binary to factor
+  mutate(ai_binary = as.factor(ai_binary))
+
+#Perform the hypothesis test
+yes_count <- sum(as.numeric(responses_dev_grp$ai_binary))
+total_count <- nrow(responses_dev_grp)
+# Perform a one-sample proportion test
+prop_test <- binom.test(yes_count, 
+                        total_count, 
+                        p = 0.5, 
+                        alternative = "greater")
+
+# View the test result
+prop_test
+
+```
+
+# Visualize
+
+Using your processed dataset, create your unique visualization.
+
+```{r Visualize}
+
+
+  
+```
+
+# Save Image
+
+Save your image for sharing. Be sure to use the `#TidyTuesday` hashtag in your post on twitter! 
+
+```{r}
+# This will save your most recent plot
+ggsave(
+  filename = "My TidyTuesday Plot.png",
+  device = "png"
+)
+```

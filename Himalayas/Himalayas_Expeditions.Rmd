@@ -1,0 +1,282 @@
+---
+title: "Himalayas Expedition An"
+date: 2025-01-22
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidytuesdayR)
+library(gganimate)
+library(ggridges)
+library(ggthemes)
+library(gifski)
+library(treemap)
+library(treemapify)
+```
+
+# Load the weekly Data
+
+Download the weekly data and make available in the `tt` object.
+
+```{r Load}
+tt <- tt_load("2025-01-21")
+exped_tidy <- tt$exped_tidy
+peaks_tidy <- tt$peaks_tidy
+
+#download the files locally
+write_csv(exped_tidy, "exped_tidy.csv")
+write_csv(peaks_tidy, "peaks_tidy.csv")
+```
+
+# Glimpse Data
+
+Take an initial look at the format of the data available.
+
+```{r Glimpse}
+tt %>% 
+  map(glimpse)
+```
+
+# Wrangle
+
+```{r Wrangle}
+glimpse(peaks_tidy)
+
+peaks_tidy$PSTATUS <- as.factor(peaks_tidy$PSTATUS)
+
+
+ggplot(peaks_tidy, aes(x = HIMAL_FACTOR, fill = PSTATUS_FACTOR)) +
+  geom_bar(position = "fill") +
+  labs(x = "Mountain Range",
+       y = "Proportion of Climbing Status",
+       title = "Proportion of Climbing Status across Different Mountain Ranges")+coord_flip()
+
+```
+
+# Visualize
+
+Using your processed dataset, create your unique visualization.
+
+```{r Visualize}
+#How have success rates changed over time?
+
+
+# Define success: If any route (SUCCESS1 to SUCCESS4) is TRUE, count as a successful expedition
+exped_tidy <- exped_tidy%>%
+  mutate(success_binary = ifelse(rowSums(select(., starts_with("SUCCESS"))) > 0, 1, 0))
+
+# Calculate success rate per year
+success_rates <- exped_tidy %>%
+  group_by(YEAR) %>%
+  summarise(
+    total_expeditions = n(),
+    successful_expeditions = sum(success_binary),
+    success_rate = successful_expeditions / total_expeditions
+  )
+
+# Plot success rates over time
+ggplot(success_rates, aes(x = YEAR, y = success_rate)) +
+  geom_line(color = "violet", size = 1) +
+  geom_point(color = "black", size = 2) +
+  labs(
+    title = "Expedition Success Rates Over Time",
+    x = "Year",
+    y = "Success Rate"
+  ) +
+  theme_minimal()
+```
+
+```{r Visualize}
+#Investigating the expedition count by Season
+exped_tidy <- exped_tidy %>%
+  mutate(YEAR = as_factor(YEAR)) %>%
+  filter(!is.na(YEAR))
+
+expeditions_by_season <- exped_tidy %>%
+  group_by(SEASON_FACTOR) %>%
+  summarise(
+    total_expeditions = n()
+  ) 
+  
+ggplot(expeditions_by_season, aes(x = SEASON_FACTOR, y = total_expeditions)) + geom_col() + labs(
+    title = "Expeditions by Season (2020 - 2024)",
+    x = "Season",
+    y = "Total Expeditions"
+  ) + theme_minimal()
+```
+
+```{r}
+#I am interested in the number of expeditions by Principal Nationality (NATION)
+#Curious to see which Nations have the most expeditions!
+expeditions_by_nation <- exped_tidy %>%
+  group_by(NATION) %>%
+  summarise(
+    total_expeditions = n()
+  ) %>%
+  arrange(desc(total_expeditions)) %>%
+print(expeditions_by_nation)
+
+```
+
+```{r}
+#Interested in knowing the success rates for the top 5 countries with the most
+#expeditions over the years
+
+top_nations <- expeditions_by_nation %>%
+  top_n(5, total_expeditions) %>%
+  pull(NATION)
+
+#Their success rates over the years
+success_rates_by_nation <- exped_tidy %>%
+  filter(NATION %in% top_nations) %>%
+  group_by(NATION, YEAR) %>%
+  summarise(
+    total_expeditions = n(),
+    successful_expeditions = sum(success_binary),
+    success_rate = successful_expeditions / total_expeditions
+  )
+
+success_rates_by_nation <- success_rates_by_nation %>%
+  mutate(YEAR = as.numeric(YEAR))
+
+
+#Plotting an animated bar plot with success rates over the years
+animated_plot <- ggplot(success_rates_by_nation, aes(x = NATION, y = success_rate, fill = NATION)) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Year: {closest_state}",
+    subtitle = "Success Rates of the Top 5 Nations from 2020(Y1) to 2024(Y5)",
+    caption = "Data Source: Himalayas Expeditions",
+    x = "Nation",
+    y = "Success Rate",
+    fill = "Nation"
+  ) +
+  theme_bw() +
+  transition_states(YEAR, transition_length = 1, state_length = 1, wrap = FALSE) +
+  ease_aes('cubic-in-out') +
+  theme(
+    plot.title = element_text(size = 20, face = "bold"),  # Adjusting title font size
+    plot.subtitle = element_text(size = 14),  # Adjusting subtitle font size
+    plot.caption = element_text(size = 12, margin = margin(t = 10, b = 20))  # Adjusting caption font size and margin
+  )
+
+anim <- animate(animated_plot, renderer = gifski_renderer())
+anim_save("success_rates_2.gif", animation = anim)
+
+```
+
+```{r}
+# Creating the treemap
+
+success_rates_by_nation2 <- exped_tidy %>%
+  group_by(NATION) %>%
+  summarise(
+    total_expeditions = n(),
+    successful_expeditions = sum(success_binary),
+    success_rate = successful_expeditions / total_expeditions
+  ) %>% 
+  # filtering for nations with more than 5 expeditions
+  filter(total_expeditions >= 5)
+
+treemap(success_rates_by_nation2,
+        index = "NATION",
+        vSize = "total_expeditions",
+        vColor = "success_rate",
+        type = "value",
+        title = "Success Rates of Nations' Expeditions",
+        palette = "RdYlGn",
+        fontsize.title = 16,
+        fontsize.labels = 12,
+        fontsize.legend = 10)
+
+```
+
+```{r}
+#Investigating the expedition counts over the years
+#And making an animated time series plot
+expeditions_by_year <- exped_tidy %>%
+  group_by
+#animated time series
+ggplot(expeditions_by_year, aes(x = YEAR, y = total_expeditions)) +
+  geom_line(color = "magenta", size = 1) + 
+  labs(
+    title = "Expeditions Over Time",
+    x = "Year",
+    y = "Total Expeditions"
+  ) +
+  theme_minimal() +
+  transition_reveal(YEAR)
+```
+
+```{r Visualize}
+
+#Investigating relationship between Peak height and success rate
+# Get success rate for each Peak ID
+peak_success_rate <- exped_tidy %>%
+  group_by(PEAKID) %>%
+  summarise(
+    total_expeditions = n(),
+    successful_expeditions = sum(success_binary),
+    success_rate = successful_expeditions / total_expeditions
+  ) %>% 
+  left_join(peaks_tidy, by = "PEAKID")
+
+#Plot Number of total expeditions(weighted by successful expeditions) by peak height
+ggplot(peak_success_rate, aes(x = HEIGHTM, y = total_expeditions,
+                              size = successful_expeditions)) +
+  geom_point() +
+  labs(
+    title = "Number of Expeditions by Peak Height",
+    x = "Peak Height (m)",
+    y = "Total Expeditions",
+    color = "Success Rate"
+  ) +
+  theme_minimal() + geom_jitter(width = 0.3, height = 0.3)
+
+
+```
+
+```{r}
+ggplot(peak_success_rate, aes(x = PEAKID, y = total_expeditions)) +
+  geom_col() +
+  coord_polar()
+```
+
+##Success rate by Season and Host Country
+
+```{r}
+
+summary_table <- exped_tidy %>%
+  group_by(SEASON_FACTOR, HOST_FACTOR) %>%
+  summarize(
+    total_expeditions = n(),
+    successful_expeditions = sum(success_binary, na.rm = TRUE),
+    success_rate = mean(success_binary, na.rm = TRUE)
+  ) %>%
+  arrange(desc(success_rate))
+print(summary_table)
+
+ggplot(summary_table, aes(x = SEASON_FACTOR, y = success_rate, fill = HOST_FACTOR)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Success Rate by Season and Host Country",
+    x = "Season",
+    y = "Success Rate",
+    fill = "Host Country"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+# This will save your most recent plot
+ggsave(
+  filename = "My TidyTuesday Plot.png",
+  device = "png"
+)
+```
